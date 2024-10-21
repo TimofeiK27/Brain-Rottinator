@@ -1,0 +1,253 @@
+WindowManager:
+    InputWindow:
+    GenWindow:
+
+<Button>:
+    font_size:40
+    size_hint: 0.2, 0.2
+
+<InputWindow>:
+    name: "main"
+    subject: subject
+    setting: setting
+    emotion: emotion
+    action: action
+    solution: solution
+    length: length
+    GridLayout:
+        cols:1
+        size: root.width, root.height
+
+        GridLayout:
+            cols:2
+
+            Label:
+                text: "Subject: "
+            TextInput:
+                id: subject
+                multinline:False
+                hint_text: "Leave blank for random"
+            Label:
+                text: "Setting: "
+            TextInput:
+                id: setting
+                multinline:False
+                hint_text: "Leave blank for random"
+            Label:
+                text: "Emotion: "
+            TextInput:
+                id: emotion
+                multinline:False
+                hint_text: "Leave blank for random"
+            Label:
+                text: "Action: "
+            TextInput:
+                id: action
+                multinline:False
+                hint_text: "Leave blank for random"
+            Label:
+                text: "Solution: "      
+            TextInput:
+                id: solution
+                multinline:False
+                hint_text: "Leave blank for random"
+            Label:
+                text: "Length in Sentances: "      
+            TextInput:
+                id: length
+                multinline:False  
+                input_filter: 'int'  
+                hint_text: "Defaults to 2"                
+        GridLayout:
+            cols:2
+            Button:
+                id: btn
+                text:"Clear"
+                on_release: 
+                    root.clear()
+                    root.manager.transition.direction = "left"
+                text:"Clear" if btn.state == "normal" else "Clearing"
+                background_color:0.3,0.3,0.7,.5
+                color:0.3,0.3,0.7,1
+            Button:
+                id: btn
+                text:"Forge"
+                on_press: 
+                on_release: 
+                    root.forge()
+                    root.manager.transition.direction = "left"
+                text:"Forge" if btn.state == "normal" else "Forging"
+                background_color:0.3,0.7,0.3,.5
+                color:0.3,0.7,0.3,1
+            
+<GenWindow>:
+    name:"gen"
+    GridLayout:
+        cols:2
+        size: root.width, root.height
+
+        GridLayout:
+            cols:1
+            GridLayout:
+                size_hint: 1, None
+                cols:2
+                Label:
+                    size_hint: .4, None
+                    id: img_num
+                    text: "Generating Image 1 of *"
+                ProgressBar:
+                    size_hint: .6, None
+                    id: progress_bar
+                    max: 100
+                    value: 0
+            Image:
+                id: curimage
+                source: 'placeholder.jpg'
+                size: self.texture_size  
+            Button:
+                id: btn
+                text:"Back" if btn.state == "normal" else "Going Back" 
+                on_release: 
+                    root.back_btn()
+                    root.manager.transition.direction = "right"
+
+        GridLayout:
+            cols:1
+            GridLayout:
+                cols:1
+                Label:
+                    text: "-- Sentence: --"    
+                    font_size: '28sp'  
+                Label:
+                    id: sentence
+                    text: "Fetching Story..."
+                    text_size: self.width * .9, None
+                    halign: 'center' 
+                    valign: 'middle'
+                    font_size: '19sp'
+            GridLayout:
+                cols:1
+                Label:
+                    text: "-- Image Prompt: --"  
+                    font_size: '28sp'     
+                Label:
+                    id:image_prompt
+                    text: "Generating Image Prompt..."
+                    text_size: self.width * .9, None
+                    halign: 'center' 
+                    valign: 'middle'
+                    font_size: '19sp'
+
+<VideoWindow>:
+    name:"video"
+    GridLayout:
+        cols:2
+        size: root.width, root.height
+
+        GridLayout:
+            cols:1
+
+            Label:
+                id: sentence
+                text: "Now generating border and subtitles"
+                text_size: self.width * .9, None
+                halign: 'center' 
+                valign: 'middle'
+                font_size: '19sp'
+
+            GridLayout:
+                cols:1
+                Label:
+                    text: "-- AAAAAAA: --"  
+                    font_size: '28sp'     
+                Label:
+                    id:image_prompt
+                    text: "Place holder text place holder text"
+                    text_size: self.width * .9, None
+                    halign: 'center' 
+                    valign: 'middle'
+                    font_size: '19sp'
+        GridLayout:
+            cols:1
+            GridLayout:
+                size_hint: 1, None
+                cols:2
+                Label:
+                    size_hint: .2, None
+                    id: img_num
+                    text: "Video Loading"
+                ProgressBar:
+                    id: progress_bar
+                    max: 100
+                    value: 0
+            Video:
+                id: curvideo
+                options: {'eos': 'loop'}
+            Button:
+                id: btn
+                text:"Back" if btn.state == "normal" else "Going Back" 
+                on_release: 
+                    root.back_btn()
+                    root.manager.transition.direction = "right"
+
+<FinalWindow>:
+    name:"final"
+    GridLayout:
+        cols:2
+        size: root.width, root.height
+
+        GridLayout:
+            cols:1
+            
+            Label:
+                id: sentence
+                text: "Video Complete!"
+                text_size: self.width * .9, None
+                halign: 'center' 
+                valign: 'middle'
+                font_size: '20sp'
+
+            Label:
+                id: video_name
+                text: "Video Name"
+                text_size: self.width * .9, None
+                halign: 'center' 
+                valign: 'middle'
+                font_size: '20sp'
+
+            Label:
+                text: "Click to open file"
+                text_size: self.width * .9, None
+                halign: 'center' 
+                valign: 'middle'
+                color: .1,.1,.9,1
+                font_size: '20sp'
+                on_touch_down: 
+                    root.open_file()
+            GridLayout:
+                cols:1 
+                spacing:10
+                padding:20
+                Button:
+                    id: btn
+                    size_hint: .2, .8
+                    
+                    background_color: .8,.2,.2,1
+                    text:"Upload To YouTube" if btn.state == "normal" else "Going Back" 
+                    font_size: '20sp'
+                    on_release: 
+                        root.upload_yt()
+                Button:
+                    id: btn
+                    size_hint: .8, .8
+                    text:"Make Another" if btn.state == "normal" else "Going Back" 
+                    font_size: '20sp'
+                    on_release: 
+                        root.back_btn()
+                        root.manager.transition.direction = "down"
+        GridLayout:
+            cols:1
+            Video:
+                id: curvideo
+                options: {'eos': 'loop'}
+            
