@@ -4,7 +4,7 @@ os.environ['SAFETENSORS_FAST_GPU']= '1'
 
 from ai import chatGPT, promptE
 from PIL import Image
-import torch, random, json, time
+import torch, random, json, time, asyncio, aiohttp, base64, io
 
 import re, math, numpy, glob, datetime
 from sub import add_subtitles
@@ -26,10 +26,193 @@ aai.settings.api_key = os.environ.get("AAI_KEY")
 
 from skimage.filters import gaussian
 
-from getimg import generate
+from getimg import generate, get_tasks_photo, get_tasks_prompt
 
 from kivy.clock import Clock
 
+import asyncio
+
+class GenerateVideo:
+    def __init__(self, savename, prompt, imgprompt, secondImgPrompt, uiUpdate, size, debug=False, topbot=None, voice=None):
+        self.uiUpdate = uiUpdate
+        if voice == None:
+            self.voice =random.choice(['Russell', 'Justin', 'Matthew','Salli']) # Benched 'Zhiyu'
+        else:
+            self.voice = voice
+        if topbot == None and random.random() > .5:
+            self.topbot = 'top'
+        else:
+            self.topbot = 'bottom'
+        self.debug = debug
+        self.savename = savename
+        self.prompt = prompt
+        self.imgprompt = imgprompt
+        self.secondImgPrompt = secondImgPrompt
+        self.size = size
+        # After initialized
+        self.sent = 0
+        self.totalCost = 0
+        self.sent = 0
+        self.picText = []
+
+    def create_images(self):
+        # Send prompt to chatgpt to generate story
+        story = chatGPT(self.prompt) # remove [0:30]
+        print(story)
+
+        # Parses story into parts which are used to generate images
+        storyParsed = re.split(r"(?<!^)\s*[.|;|,|—\n]+\s*(?!$)", story)
+        self.sent = len(storyParsed)
+        remove = []
+        # Merges sentances that are less than 25 characters into next sentance, manipulates storyParsed
+        for i in range(self.sent):
+            if len(storyParsed[i]) < 25 and i != self.sent-1:
+                storyParsed[i+1] = storyParsed[i] + ", " + storyParsed[i+1]
+                remove.append(storyParsed[i])
+        for item in remove:
+            storyParsed.remove(item)
+            self.sent-=1
+
+        print("Length: " + str(self.sent))
+
+        # Generate image based on every sentance
+        Clock.schedule_once(lambda dt: self.uiUpdate.num_update(i + 1, self.sent), 0)
+        Clock.schedule_once(lambda dt: self.uiUpdate.bar_update(), 0)
+        #Clock.schedule_once(lambda dt: self.uiUpdate.image_update(filename), 0)
+        self.fetch_photos(storyParsed)
+
+    def fetch_photos(self,storyParsed):
+        asyncio.run(self.get_image_prompts(storyParsed))
+        #if i==0: Clock.schedule_once(lambda dt: self.uiUpdate.promps_update(storyParsed[i], self.imgprompt), 0)
+
+        # Generate image based on processed sentance
+        asyncio.run(self.get_photos(self.prompt_results))
+        
+        for i in range(len(self.image_results)):
+            decoded_img = base64.b64decode(self.image_results[i]["image"])
+            img = Image.open(io.BytesIO(decoded_img))
+            img.thumbnail((1080,1080), Image.LANCZOS)
+            img.save(f'temp/{i}','JPEG')
+            self.picText.append([storyParsed[i], f'temp/{i}'])
+            self.totalCost += self.image_results[i]["cost"]
+        self.create_videos()
+
+        #if i!=0: Clock.schedule_once(lambda dt: self.uiUpdate.promps_update(storyParsed[i], self.imgprompt), 0)
+        
+
+    async def get_photos(self,storyParsed):
+        results = []
+        async with aiohttp.ClientSession() as session:
+            tasks = get_tasks_photo(session, storyParsed)
+            responses = await(asyncio.gather(*tasks))
+            for response in responses:
+                results.append(await response.json())
+        self.image_results = results
+
+    async def get_image_prompts(self,storyParsed):
+        results = []
+        
+        async with aiohttp.ClientSession() as session:
+            tasks = get_tasks_prompt(session, storyParsed, self.imgprompt, self.secondImgPrompt)
+            responses = await(asyncio.gather(*tasks))
+            for response in responses:
+                results.append(await response.json())
+        
+        self.prompt_results = []
+        for item in results:
+            print(item["choices"][0]["message"]["content"] + "  GENERATED")
+            self.prompt_results.append(item["choices"][0]["message"]["content"])
+    
+
+    def create_videos(self):
+        # Combines story, images, and music into final video
+        clips = []
+        blurred_clips = []
+        for i in range(self.sent):
+
+            # Text to speech on story
+            obj = stream_elements.StreamElements()
+            print(self.picText[i][0])
+            data = obj.requestTTS(self.picText[i][0], self.voice)
+
+            with open("temp/" + str(i) + '.mp3', '+wb') as file:
+                file.write(data)
+
+            audio = MP3("temp/" + str(i) + '.mp3') 
+            length = audio.info.length
+
+            # Duration buffer for end of video
+            if i == self.sent-1:
+                length = length+1
+
+            # Creates blurred video and not blurred from images and adds audio from text to speech
+            blurred_clip = zoom_in_effect(ImageClip(self.picText[i][1]).resize(0.1).resize(10).set_duration(length + .15), 0.1)
+            clip = zoom_in_effect(ImageClip(self.picText[i][1]).set_duration(length + .15), 0.1)
+
+            clip.audio = AudioFileClip("temp/" + str(i) + '.mp3')
+
+            blurred_clips.append(blurred_clip)
+            clips.append(clip)
+
+        # Combines all blurred and non-blured clips into one w/o subtitles or music
+        video = concatenate_videoclips(clips,method='compose')
+        blurred_video = concatenate_videoclips(blurred_clips,method='compose')
+
+        # Selects song and adds to video
+        #song = random.choice(os.listdir("music"))
+        #['Experience.wav', 'kanye.wav', 'moon.wav', 'Mystery of Love.wav', 'neon.wav', 'OMFG.wav', 'rihanna.wav', 'Sugar.wav', 'Waves.wav']
+        song = random.choice(['Mystery of Love.wav','OMFG.wav','Experience.wav', 'kanye.wav', 'moon.wav','rihanna.wav','neon.wav'])#, 'Mystery of Love.wav','OMFG.wav', 'OMFG.wav', 'Sugar.wav', 'Waves.wav','Waves.wav',])
+
+        video.audio =  CompositeAudioClip([AudioFileClip("music/" + str(song)),video.audio]).subclip(0,video.duration)
+        video.write_videofile("temp/test.mp4",fps=24)
+        self.duration = video.duration
+        Clock.schedule_once(lambda dt:self.uiUpdate.show_video("temp/test.mp4"), 0)
+        blurred_video.write_videofile("temp/blurred.mp4",fps=24, codec='libx264')
+        self.create_final()
+       
+    def create_final(self):
+        # Runs transcriber to sync text to speech with subtitles
+        transcriber = aai.Transcriber()
+
+        transcript = transcriber.transcribe("temp/test.mp4")
+        words = transcript.export_subtitles_srt(chars_per_caption=18)
+        f = open("temp/subtitles.srt","a")
+        f.write(words)
+        f.close()
+        outputSub = "temp/withSubs.mp4"
+
+        # Adds subtitles to not blurred video and combines non blurred to blurred to make final video
+        add_subtitles("temp/test.mp4", "temp/subtitles.srt", outputSub, self.topbot, self.size)
+        CombinePad(outputSub, "temp/blurred.mp4", "finals/" + self.savename + ".mp4")
+
+        Clock.schedule_once(lambda dt: self.uiUpdate.final_video("finals/" + self.savename + ".mp4"), 0)
+        time.sleep(1)
+        # Clean temp files
+        files = glob.glob('temp/*')
+        for f in files:
+            os.remove(f)
+
+        # Set data of specific video
+        entry = {
+                "name": self.savename + ".mp4",
+                "uploaded": False,
+                "quality": 0,
+                "checked": False,
+                "length": math.floor(self.duration),
+                "creationTime": str(datetime.datetime.now().year) +"-" + str(datetime.datetime.now().month) +"-" + str(datetime.datetime.now().day) + "-" + str(datetime.datetime.now().hour) +"-" + str(datetime.datetime.now().minute),
+            }
+
+        # Saves video to database
+        with open("videodata.json", "r+") as f:
+            currentData =json.load(f)
+            f.seek(0)
+            currentData[self.savename + ".mp4"] =  entry
+            f.write(json.dumps(currentData, indent=4))
+            f.truncate()
+
+        print("TOTAL COST OF VIDEO IS : " + str(self.totalCost) + "$")
+        return "finals/" + self.savename
+    
 #create zoom
 def zoom_in_effect(clip, zoom_ratio=0.015):
     def effect(get_frame, t):
@@ -61,174 +244,36 @@ def zoom_in_effect(clip, zoom_ratio=0.015):
 
     return clip.fl(effect)
 
+
 """
-    length - length of story in sentances
-    subject - story about
-    setting - in a 
-    action - that
-    solution + solAct - so
-    plot - what happens in story 
-        example: Have the first 2 sentances be about the { solution } searching
-    
-    imgprompt - example: f"Focus on the provided sentance. Make it descriptive and visual and breif and emphasize the characters emotions, 
-                            story about {action} in {setting}, Max 10 words, only if the word dad, mom, mother, or father appear, 
-                            write the words 'Muscular Human' before it otherwise do not, write that it is night and dark and " + setting
-                to aid in image generation
+    def fetch_photos(self,storyParsed):
+        for i in range(self.sent):
+            # Process the sentance to make image generation more accurate
+            Clock.schedule_once(lambda dt: self.uiUpdate.num_update(i + 1, self.sent), 0)
+            Clock.schedule_once(lambda dt: self.uiUpdate.bar_update(), 0)
+            print(storyParsed[i])
+            self.imgprompt  = promptE(f"Turn the next sentence into a text to image ai prompt which I can generate accurately with: {storyParsed[i]}. {self.imgprompt}") #, change any instance of son or child to {subject}
+            if self.secondImgPrompt != None:
+                self.imgprompt = promptE(f"In the sentance : { self.imgprompt }, make the following changes : { self.secondImgPrompt }" )
+            print(self.imgprompt)
+            
+            if i==0: Clock.schedule_once(lambda dt: self.uiUpdate.promps_update(storyParsed[i], self.imgprompt), 0)
 
-    secondImgPrompt - SET TO NONE TO IGNORE - takes as input output from imgprompt and does another chatgpt request, 
-        example: f"only if there are no Nouns or Mom in the sentance, have the first word be {subject}, only return the modified sentance"
-    
-    topbot - if == 'top', subtitles at top, if != 'top', then at bottom
-    voice - text to speach voice
-    era - value given to era field in json file
-"""
-def generateVideo2(savename, prompt, imgprompt, secondImgPrompt, uiUpdate, debug=False, topbot=None, voice=None):
+            # Generate image based on processed sentance
+            filename, cost = generate(self.imgprompt,i)
 
-    
-    # Sets voice and topbot to random 
-    if voice == None:
-        voice =random.choice(['Russell', 'Justin', 'Matthew','Salli']) # Benched 'Zhiyu'
+            if i!=0: Clock.schedule_once(lambda dt: self.uiUpdate.promps_update(storyParsed[i], self.imgprompt), 0)
+            Clock.schedule_once(lambda dt: self.uiUpdate.image_update(filename), 0)
 
-    if topbot == None and random.random() > .5:
-        topbot = 'top'
-    else:
-        topbot = 'bottom'
-
-    # Keeps track of how expensive video is
-    totalCost = 0
-
-    # Send prompt to chatgpt to generate story
-    story = chatGPT(prompt)[0:35] # remove [0:40]
-    print(story)
-
-    # Parses story into parts which are used to generate images
-    storyParsed = re.split(r"(?<!^)\s*[.|;|,|—\n]+\s*(?!$)", story)
-    sent = len(storyParsed)
-    remove = []
-    # Merges sentances that are less than 25 characters into next sentance, manipulates storyParsed
-    for i in range(sent):
-        if len(storyParsed[i]) < 25 and i != sent-1:
-            storyParsed[i+1] = storyParsed[i] + ", " + storyParsed[i+1]
-            remove.append(storyParsed[i])
-    for item in remove:
-        storyParsed.remove(item)
-        sent-=1
-
-    picText = []
-
-    print("Length: " + str(sent))
-
-    # Generate image based on every sentance
-    for i in range(sent):
-        # Process the sentance to make image generation more accurate
-        Clock.schedule_once(lambda dt: uiUpdate.num_update(i + 1, sent), 0)
-        Clock.schedule_once(lambda dt: uiUpdate.bar_update(), 0)
-        print(storyParsed[i])
-        imgprompt  = promptE(f"Turn the next sentence into a text to image ai prompt which I can generate accurately with: {storyParsed[i]}. {imgprompt}") #, change any instance of son or child to {subject}
-        if secondImgPrompt != None:
-            imgprompt = promptE(f"In the sentance : { imgprompt }, make the following changes : { secondImgPrompt }" )
-        print(imgprompt)
-         
-        if i==0: Clock.schedule_once(lambda dt: uiUpdate.promps_update(storyParsed[i], imgprompt), 0)
-
-        # Generate image based on processed sentance
-        filename, cost = generate(imgprompt,i)
-
-        if i!=0: Clock.schedule_once(lambda dt: uiUpdate.promps_update(storyParsed[i], imgprompt), 0)
-        Clock.schedule_once(lambda dt: uiUpdate.image_update(filename), 0)
-
-        # Allows user to reject image and redo it
-        if debug:
-            userInput = input(f"\033[1;32;40m saved into {filename}, Enter new prompt, or Press Enter to Continue... \n")
-            while userInput != '':
-                filename, newcost = generate(userInput,i)
-                cost += newcost
+            # Allows user to reject image and redo it
+            if self.debug:
                 userInput = input(f"\033[1;32;40m saved into {filename}, Enter new prompt, or Press Enter to Continue... \n")
+                while userInput != '':
+                    filename, newcost = generate(userInput,i)
+                    cost += newcost
+                    userInput = input(f"\033[1;32;40m saved into {filename}, Enter new prompt, or Press Enter to Continue... \n")
 
-        picText.append([storyParsed[i], filename])
-        totalCost += cost
-
-    # Combines story, images, and music into final video
-    clips = []
-    blurred_clips = []
-    for i in range(sent):
-
-        # Text to speech on story
-        obj = stream_elements.StreamElements()
-        data = obj.requestTTS(picText[i][0], voice)
-
-        with open("temp/" + str(i) + '.mp3', '+wb') as file:
-            file.write(data)
-
-        audio = MP3("temp/" + str(i) + '.mp3') 
-        length = audio.info.length
-
-        # Duration buffer for end of video
-        if i == sent-1:
-            length = length+1
-
-        # Creates blurred video and not blurred from images and adds audio from text to speech
-        blurred_clip = zoom_in_effect(ImageClip(picText[i][1]).resize(0.1).resize(10).set_duration(length + .15), 0.1)
-        clip = zoom_in_effect(ImageClip(picText[i][1]).set_duration(length + .15), 0.1)
-
-        clip.audio = AudioFileClip("temp/" + str(i) + '.mp3')
-
-        blurred_clips.append(blurred_clip)
-        clips.append(clip)
-
-    # Combines all blurred and non-blured clips into one w/o subtitles or music
-    video = concatenate_videoclips(clips,method='compose')
-    blurred_video = concatenate_videoclips(blurred_clips,method='compose')
-
-    # Selects song and adds to video
-    #song = random.choice(os.listdir("music"))
-    #['Experience.wav', 'kanye.wav', 'moon.wav', 'Mystery of Love.wav', 'neon.wav', 'OMFG.wav', 'rihanna.wav', 'Sugar.wav', 'Waves.wav']
-    song = random.choice(['Mystery of Love.wav','OMFG.wav','Experience.wav', 'kanye.wav', 'moon.wav','rihanna.wav','neon.wav'])#, 'Mystery of Love.wav','OMFG.wav', 'OMFG.wav', 'Sugar.wav', 'Waves.wav','Waves.wav',])
-
-    video.audio =  CompositeAudioClip([AudioFileClip("music/" + str(song)),video.audio]).subclip(0,video.duration)
-    video.write_videofile("temp/test.mp4",fps=24)
-    Clock.schedule_once(lambda dt:uiUpdate.show_video("temp/test.mp4"), 0)
-    blurred_video.write_videofile("temp/blurred.mp4",fps=24, codec='libx264')
-    
-    # Runs transcriber to sync text to speech with subtitles
-    transcriber = aai.Transcriber()
-
-    transcript = transcriber.transcribe("temp/test.mp4")
-    words = transcript.export_subtitles_srt(chars_per_caption=18)
-    f = open("temp/subtitles.srt","a")
-    f.write(words)
-    f.close()
-    outputSub = "temp/withSubs.mp4"
-
-    # Adds subtitles to not blurred video and combines non blurred to blurred to make final video
-    add_subtitles("temp/test.mp4", "temp/subtitles.srt", outputSub, topbot)
-    CombinePad(outputSub, "temp/blurred.mp4", "finals/" + savename + ".mp4")
-
-    Clock.schedule_once(lambda dt: uiUpdate.final_video("finals/" + savename + ".mp4"), 0)
-    time.sleep(2)
-    # Clean temp files
-    files = glob.glob('temp/*')
-    for f in files:
-        os.remove(f)
-    name =  savename
-    
-    # Set data of specific video
-    entry = {
-            "name": name + ".mp4",
-            "uploaded": False,
-            "quality": 0,
-            "checked": False,
-            "length": math.floor(video.duration),
-            "creationTime": str(datetime.datetime.now().year) +"-" + str(datetime.datetime.now().month) +"-" + str(datetime.datetime.now().day) + "-" + str(datetime.datetime.now().hour) +"-" + str(datetime.datetime.now().minute),
-        }
-
-    # Saves video to database
-    with open("videodata.json", "r+") as f:
-        currentData =json.load(f)
-        f.seek(0)
-        currentData[name + ".mp4"] =  entry
-        f.write(json.dumps(currentData, indent=4))
-        f.truncate()
-
-    print("TOTAL COST OF VIDEO IS : " + str(totalCost) + "$")
-    return "finals/" + savename
+            self.picText.append([storyParsed[i], filename])
+            self.totalCost += cost
+            self.create_videos()
+    """

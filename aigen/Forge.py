@@ -26,6 +26,8 @@ from ffpyplayer.player import MediaPlayer
 from genarotter import CreatePrompt
 #Window.clearcolor = (1, 1, 1, 1)
 
+from gen import GenerateVideo
+
 from kivy.config import Config
 Config.set('kivy', 'video', 'ffpyplayer')
 
@@ -73,10 +75,10 @@ class GenWindow(Screen):
         image.source = 'placeholder.jpg'
 
     def Generate(self, prompt, subject):
-        from gen import generateVideo2
-        imgprompt = f"""make it descriptive and visual and breif about {subject}, Max 10 words only use 10 words, only return edited sentance"""
-        secondImgPrompt = f"""Rewrite with only 10 words, only return edited sentance"""
-        p1 = threading.Thread(target=generateVideo2, args=("Test", prompt, imgprompt, secondImgPrompt, self))
+        imgprompt = f"""make it psychadelic descriptive and visual and breif about {subject}, Max 10 words only use 10 words, only return edited sentance, sentance must contain {subject}"""
+        secondImgPrompt = None #f"""Rewrite with only 10 words, only return edited sentance"""
+        VideoInstance = GenerateVideo("Test", prompt, imgprompt, secondImgPrompt, self, 512)
+        p1 = threading.Thread(target=VideoInstance.create_images)
         p1.start()
 
     def bar_update(self):
@@ -212,6 +214,7 @@ class Forge(App):
         return sm
     
 if __name__ == "__main__":
+    
     Forge().run()
 
 
