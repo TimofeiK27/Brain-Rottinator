@@ -1,4 +1,5 @@
 import os, time, threading, multiprocessing as mp, threading
+from functools import partial
 
 os.environ["KIVY_LOG_MODE"] = "PYTHON"
 os.environ["KIVY_VIDEO"] = "ffpyplayer"
@@ -77,8 +78,8 @@ class GenWindow(Screen):
     def Generate(self, prompt, subject):
         imgprompt = f"""make it psychadelic descriptive and visual and breif about {subject}, Max 10 words only use 10 words, only return edited sentance, sentance must contain {subject}"""
         secondImgPrompt = None #f"""Rewrite with only 10 words, only return edited sentance"""
-        VideoInstance = GenerateVideo("Test", prompt, imgprompt, secondImgPrompt, self, 512)
-        p1 = threading.Thread(target=VideoInstance.create_images)
+        self.VideoInstance = GenerateVideo("Test", prompt, imgprompt, secondImgPrompt, self, 512)
+        p1 = threading.Thread(target=self.VideoInstance.create_images)
         p1.start()
 
     def bar_update(self):
@@ -104,10 +105,37 @@ class GenWindow(Screen):
         sentence.text = sent
         image_prompt.text = img_pt
 
-    def num_update(self, num, den):
-        sentence = self.ids.img_num
-        sentence.text = f'Generating Image {num} of {den}'
+    def display_images(self, image_results):
+        self.image_results = image_results
 
+        # Set current image to the first
+        self.current_img = 1
+        self.on_slide_press(-1, None)
+        self.ids.prev_btn.bind(on_press=partial(self.on_slide_press, -1))
+        self.ids.next_btn.bind(on_press=partial(self.on_slide_press, 1))
+        self.ids.make_btn.bind(on_press=self.on_make_press)
+        self.ids.regen_btn.bind(on_press=self.on_regen_press)
+
+    def regenerated(self):
+            self.ids.curimage.reload()
+
+    def on_regen_press(self, instance):
+        p1 = threading.Thread(target=self.VideoInstance.fetch_photo, args=(self.ids.image_prompt.text, f"temp/{self.current_img}"))
+        p1.start()
+        
+
+    def on_make_press(self, instance):
+        p1 = threading.Thread(target=self.VideoInstance.create_videos)
+        p1.start()
+
+    def on_slide_press(self, amt, instance):
+        if(self.current_img <= 0 and amt == -1 or self.current_img == len(self.image_results)-1 and amt == 1):
+            return
+        self.current_img += amt
+        self.image_update(self.image_results[self.current_img][1])
+        self.promps_update(self.image_results[self.current_img][0],self.image_results[self.current_img][2])
+        self.ids.img_num.text = f'Showing Image {self.current_img + 1} of {len(self.image_results)}'
+        
     def show_video(self, filename):
         sm.transition = SlideTransition(direction='up')
         sm.current = "video"
@@ -115,7 +143,6 @@ class GenWindow(Screen):
         self.ids.curimage.source = 'placeholder.jpg'
         self.ids.curimage.reload()
         self.promps_update("Fetching Story...", "Generating Image Prompt...")
-        self.num_update(1, "*")
         self.ids.progress_bar.value=0
 
     def final_video(self,filename):

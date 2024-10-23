@@ -85,10 +85,12 @@ WindowManager:
     GridLayout:
         cols:2
         size: root.width, root.height
-
+        
         GridLayout:
             cols:1
             GridLayout:
+                padding:20
+                spacing:10
                 size_hint: 1, None
                 cols:2
                 Label:
@@ -100,6 +102,18 @@ WindowManager:
                     id: progress_bar
                     max: 100
                     value: 0
+            Button:
+                id: prev_btn
+                color: 1,1,1,.7
+                background_color: .8,.2,.2,1
+                text:"Prev" if prev_btn.state == "normal" else "PREV" 
+
+            Button:
+                id: next_btn
+                color: 1,1,1,.7
+                background_color: .8,.2,.2,1
+                text:"Next" if next_btn.state == "normal" else "NEXT" 
+
             Image:
                 id: curimage
                 source: 'placeholder.jpg'
@@ -130,13 +144,28 @@ WindowManager:
                 Label:
                     text: "-- Image Prompt: --"  
                     font_size: '28sp'     
-                Label:
+                TextInput:
                     id:image_prompt
                     text: "Generating Image Prompt..."
                     text_size: self.width * .9, None
                     halign: 'center' 
                     valign: 'middle'
                     font_size: '19sp'
+            GridLayout:
+                cols:2
+                size_hint: .5, None
+                Button:
+                    id: regen_btn
+                    color: 1,1,1,.7
+                    background_color: .8,.2,.2,1
+                    text:"Regenerate" if regen_btn.state == "normal" else "REGEN..." 
+
+                Button:
+                    id: make_btn
+                    color: 1,1,1,.7
+                    background_color: .8,.2,.2,1
+                    text:"Make Video" if make_btn.state == "normal" else "MAKING..." 
+                    
 
 <VideoWindow>:
     name:"video"

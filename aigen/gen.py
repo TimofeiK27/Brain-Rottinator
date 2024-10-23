@@ -75,9 +75,6 @@ class GenerateVideo:
 
         print("Length: " + str(self.sent))
 
-        # Generate image based on every sentance
-        Clock.schedule_once(lambda dt: self.uiUpdate.num_update(i + 1, self.sent), 0)
-        Clock.schedule_once(lambda dt: self.uiUpdate.bar_update(), 0)
         #Clock.schedule_once(lambda dt: self.uiUpdate.image_update(filename), 0)
         self.fetch_photos(storyParsed)
 
@@ -93,12 +90,18 @@ class GenerateVideo:
             img = Image.open(io.BytesIO(decoded_img))
             img.thumbnail((1080,1080), Image.LANCZOS)
             img.save(f'temp/{i}','JPEG')
-            self.picText.append([storyParsed[i], f'temp/{i}'])
+            self.picText.append([storyParsed[i], f'temp/{i}',self.prompt_results[i]])
             self.totalCost += self.image_results[i]["cost"]
-        self.create_videos()
+        Clock.schedule_once(lambda dt: self.uiUpdate.display_images(self.picText), 0)
 
-        #if i!=0: Clock.schedule_once(lambda dt: self.uiUpdate.promps_update(storyParsed[i], self.imgprompt), 0)
-        
+    def fetch_photo(self,prompt,filename):
+        asyncio.run(self.get_photos([prompt]))
+        decoded_img = base64.b64decode(self.image_results[0]["image"])
+        img = Image.open(io.BytesIO(decoded_img))
+        img.thumbnail((1080,1080), Image.LANCZOS)
+        img.save(filename,'JPEG')
+        self.totalCost += self.image_results[0]["cost"]
+        Clock.schedule_once(lambda dt: self.uiUpdate.regenerated(), 0)    
 
     async def get_photos(self,storyParsed):
         results = []
